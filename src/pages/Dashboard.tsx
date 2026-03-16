@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Package, Store, Clock, Plus, Trash2, ArrowLeft, Pencil, Search, Image as ImageIcon, Save, X, ShoppingBag, Settings, Upload } from "lucide-react";
+import { Package, Store, Clock, Plus, Trash2, ArrowLeft, Pencil, Search, Image as ImageIcon, Save, X, ShoppingBag, Settings, Upload, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMyStores } from "@/hooks/useStores";
@@ -16,6 +16,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import AnalyticsDashboard from "@/components/analytics/AnalyticsDashboard";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -281,6 +282,10 @@ const Dashboard = () => {
         <TabsList className="mb-6">
           <TabsTrigger value="products">Produtos</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
+          <TabsTrigger value="analytics" className="gap-1.5">
+            <BarChart3 className="h-3.5 w-3.5" />
+            Analytics
+          </TabsTrigger>
         </TabsList>
 
         {/* Products Tab */}
@@ -452,6 +457,11 @@ const Dashboard = () => {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* Analytics Tab */}
+        <TabsContent value="analytics">
+          <AnalyticsDashboard storeId={store.id} storeName={store.name} />
         </TabsContent>
       </Tabs>
 

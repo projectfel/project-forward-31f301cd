@@ -10,6 +10,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import CartDrawer from "@/components/CartDrawer";
+import AnalyticsProvider from "@/components/AnalyticsProvider";
 import Index from "./pages/Index";
 import MarketPage from "./pages/MarketPage";
 import Dashboard from "./pages/Dashboard";
@@ -44,6 +45,7 @@ const App = () => (
             <BrowserRouter>
               <Header />
               <CartDrawer />
+              <AnalyticsProvider>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/mercado/:id" element={<MarketPage />} />
@@ -61,6 +63,7 @@ const App = () => (
 
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </AnalyticsProvider>
               <Footer />
             </BrowserRouter>
           </ErrorBoundary>
