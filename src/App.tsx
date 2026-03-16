@@ -63,6 +63,7 @@ const App = () => (
 
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </AnalyticsProvider>
               <Footer />
             </BrowserRouter>
           </ErrorBoundary>
