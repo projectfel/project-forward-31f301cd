@@ -282,6 +282,10 @@ const Dashboard = () => {
         <TabsList className="mb-6">
           <TabsTrigger value="products">Produtos</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
+          <TabsTrigger value="analytics" className="gap-1.5">
+            <BarChart3 className="h-3.5 w-3.5" />
+            Analytics
+          </TabsTrigger>
         </TabsList>
 
         {/* Products Tab */}
