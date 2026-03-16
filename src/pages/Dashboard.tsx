@@ -458,6 +458,11 @@ const Dashboard = () => {
             </div>
           )}
         </TabsContent>
+
+        {/* Analytics Tab */}
+        <TabsContent value="analytics">
+          <AnalyticsDashboard storeId={store.id} storeName={store.name} />
+        </TabsContent>
       </Tabs>
 
       {/* Store Settings Modal */}
