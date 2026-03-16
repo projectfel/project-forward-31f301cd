@@ -45,6 +45,7 @@ const App = () => (
             <BrowserRouter>
               <Header />
               <CartDrawer />
+              <AnalyticsProvider>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/mercado/:id" element={<MarketPage />} />
