@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { z } from "zod";
 
@@ -22,7 +22,6 @@ const Login = () => {
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/";
 
@@ -44,18 +43,17 @@ const Login = () => {
     try {
       const { error } = await signIn(email, password);
       if (error) {
-        toast({
-          title: "Erro ao entrar",
-          description: error.message.includes("Invalid login")
+        toast.error(
+          error.message.includes("Invalid login")
             ? "E-mail ou senha incorretos"
-            : error.message,
-          variant: "destructive",
-        });
+            : error.message
+        );
       } else {
+        toast.success("Bem-vindo de volta! 👋");
         navigate(from, { replace: true });
       }
     } catch {
-      toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
+      toast.error("Erro inesperado. Tente novamente mais tarde.");
     } finally {
       setLoading(false);
     }
