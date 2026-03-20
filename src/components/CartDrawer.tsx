@@ -1,12 +1,30 @@
-import { X, Minus, Plus, MessageCircle, Trash2, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { X, Minus, Plus, MessageCircle, Trash2, Copy, Check, MapPin } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useCart } from "@/contexts/CartContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { authService } from "@/services/auth";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 const CartDrawer = () => {
   const { items, total, isOpen, setIsOpen, updateQuantity, removeItem, clearCart } = useCart();
+  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [userAddress, setUserAddress] = useState<string | null>(null);
+  const [loadingAddress, setLoadingAddress] = useState(false);
+
+  // Load user address when drawer opens
+  useEffect(() => {
+    if (isOpen && user) {
+      setLoadingAddress(true);
+      authService.getProfile(user.id).then((profile) => {
+        setUserAddress((profile as any)?.address || null);
+      }).catch(() => {
+        setUserAddress(null);
+      }).finally(() => setLoadingAddress(false));
+    }
+  }, [isOpen, user]);
 
   const buildMessage = () => {
     if (items.length === 0) return "";
@@ -25,7 +43,11 @@ const CartDrawer = () => {
       .join("\n");
     const totalStr = total.toFixed(2).replace(".", ",");
 
-    return `Olá ${firstMarket.nome}! 🛒\n\nGostaria de fazer este pedido:\n\n${itens}\n\n💰 Total: R$ ${totalStr}\n\n📍 Endereço: [Digite seu endereço]\n\nObrigado!`;
+    const addressLine = userAddress
+      ? `📍 Endereço: ${userAddress}`
+      : "📍 Endereço: [Não cadastrado]";
+
+    return `Olá ${firstMarket.nome}! 🛒\n\nGostaria de fazer este pedido:\n\n${itens}\n\n💰 Total: R$ ${totalStr}\n\n${addressLine}\n\nObrigado!`;
   };
 
   const getWhatsappNumber = () => {
@@ -36,15 +58,28 @@ const CartDrawer = () => {
   const finalizarPedido = () => {
     if (items.length === 0) return;
 
+    if (!user) {
+      toast.error("Faça login para finalizar seu pedido", {
+        action: { label: "Entrar", onClick: () => { setIsOpen(false); } },
+      });
+      return;
+    }
+
+    if (!userAddress) {
+      toast.error("Cadastre seu endereço antes de finalizar o pedido", {
+        description: "Vá em Editar Perfil para adicionar seu endereço de entrega.",
+        duration: 5000,
+      });
+      return;
+    }
+
     const msg = buildMessage();
     const whatsapp = getWhatsappNumber();
     const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`;
 
-    // Try to open WhatsApp - may be blocked in iframe/preview
     const newWindow = window.open(url, "_blank");
 
     if (!newWindow || newWindow.closed) {
-      // Fallback: copy message and show instructions
       navigator.clipboard.writeText(msg).then(() => {
         toast.success("Mensagem copiada! Cole no WhatsApp do mercado.", {
           description: `WhatsApp: ${whatsapp}`,
@@ -67,6 +102,8 @@ const CartDrawer = () => {
       toast.error("Não foi possível copiar");
     }
   };
+
+  const hasAddress = !!userAddress;
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -124,13 +161,31 @@ const CartDrawer = () => {
             </div>
 
             <div className="space-y-3 border-t pt-4">
+              {/* Address indicator */}
+              {user && !loadingAddress && (
+                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${hasAddress ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]" : "bg-destructive/10 text-destructive"}`}>
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  {hasAddress ? (
+                    <span className="truncate">{userAddress}</span>
+                  ) : (
+                    <span>
+                      Endereço não cadastrado.{" "}
+                      <Link to="/perfil" onClick={() => setIsOpen(false)} className="font-medium underline">
+                        Cadastrar agora
+                      </Link>
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center justify-between text-lg font-bold">
                 <span className="text-foreground">Total</span>
                 <span className="text-primary">R$ {total.toFixed(2).replace(".", ",")}</span>
               </div>
               <button
                 onClick={finalizarPedido}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[hsl(var(--whatsapp))] py-4 text-[hsl(var(--whatsapp-foreground))] font-bold text-lg transition-all hover:opacity-90 active:scale-[0.98]"
+                disabled={!hasAddress && !!user}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[hsl(var(--whatsapp))] py-4 text-[hsl(var(--whatsapp-foreground))] font-bold text-lg transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <MessageCircle className="h-5 w-5" />
                 Finalizar via WhatsApp

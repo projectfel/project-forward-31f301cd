@@ -4,8 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, UserPlus } from "lucide-react";
+import { toast } from "sonner";
+import { Eye, EyeOff, UserPlus, Mail } from "lucide-react";
 import { z } from "zod";
 
 const cadastroSchema = z
@@ -30,7 +30,6 @@ const Cadastro = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { signUp } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,16 +49,17 @@ const Cadastro = () => {
     try {
       const { error } = await signUp(email, password, name);
       if (error) {
-        toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
+        toast.error(error.message);
       } else {
-        toast({
-          title: "Conta criada!",
-          description: "Verifique seu e-mail para confirmar o cadastro.",
+        toast.success("Conta criada com sucesso! 🎉", {
+          description: "Enviamos um link de confirmação para o seu e-mail. Verifique sua caixa de entrada (e spam) para ativar sua conta.",
+          duration: 8000,
+          icon: <Mail className="h-5 w-5 text-primary" />,
         });
         navigate("/login");
       }
     } catch {
-      toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
+      toast.error("Erro inesperado. Tente novamente mais tarde.");
     } finally {
       setLoading(false);
     }

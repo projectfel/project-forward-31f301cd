@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { Package, Store, Clock, Plus, Trash2, ArrowLeft, Pencil, Search, Image as ImageIcon, Save, X, ShoppingBag, Settings, Upload, BarChart3 } from "lucide-react";
+import { Package, Store, Clock, Plus, Trash2, ArrowLeft, Pencil, Search, Image as ImageIcon, Save, X, ShoppingBag, Settings, Upload, BarChart3, Tag, Star, StarOff } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMyStores } from "@/hooks/useStores";
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from "@/hooks/useProducts";
 import { useStoreOrders, useUpdateOrderStatus } from "@/hooks/useOrders";
 import { useUploadImage } from "@/hooks/useUploadImage";
+import { useCategories } from "@/hooks/useCategories";
 import { storesService } from "@/services/stores";
+import { isStoreOpen, getStoreStatusLabel } from "@/lib/storeStatus";
 import { DashboardSkeleton } from "@/components/StoreSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -20,11 +23,13 @@ import AnalyticsDashboard from "@/components/analytics/AnalyticsDashboard";
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data: stores, isLoading: storesLoading } = useMyStores(user?.id);
   const store = stores?.[0];
 
   const { data: products, isLoading: productsLoading } = useProducts(store?.id);
   const { data: orders, isLoading: ordersLoading } = useStoreOrders(store?.id);
+  const { data: categories } = useCategories();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
@@ -35,8 +40,11 @@ const Dashboard = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Form state
-  const [form, setForm] = useState({ name: "", price: "", description: "", unit: "un", image_url: "" });
+  // Form state - added category_id, original_price, featured
+  const [form, setForm] = useState({
+    name: "", price: "", description: "", unit: "un", image_url: "",
+    category_id: "", original_price: "", featured: false,
+  });
 
   // Store settings
   const [showSettings, setShowSettings] = useState(false);
@@ -48,7 +56,7 @@ const Dashboard = () => {
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   const resetForm = () => {
-    setForm({ name: "", price: "", description: "", unit: "un", image_url: "" });
+    setForm({ name: "", price: "", description: "", unit: "un", image_url: "", category_id: "", original_price: "", featured: false });
     setShowAdd(false);
     setEditingId(null);
   };
@@ -56,37 +64,49 @@ const Dashboard = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const toastId = toast.loading("Enviando imagem...");
     try {
       const result = await upload(file, `products/${store?.id}`);
       setForm((f) => ({ ...f, image_url: result.url }));
-      toast.success("Imagem carregada!");
+      toast.success("Imagem carregada!", { id: toastId });
     } catch {
-      toast.error("Erro ao carregar imagem");
+      toast.error("Erro ao carregar imagem", { id: toastId });
     }
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !store) return;
+    const toastId = toast.loading("Atualizando foto de capa...");
     try {
       const result = await upload(file, `covers/${store.id}`);
       await storesService.update(store.id, { cover_image: result.url });
       setCoverPreview(result.url);
-      toast.success("Foto de capa atualizada!");
+      toast.success("Foto de capa atualizada!", { id: toastId });
     } catch {
-      toast.error("Erro ao atualizar foto de capa");
+      toast.error("Erro ao atualizar foto de capa", { id: toastId });
     }
   };
 
   const handleSave = async () => {
     if (!form.name || !form.price || !store) return;
+    const toastId = toast.loading(editingId ? "Atualizando produto..." : "Criando produto...");
     try {
       if (editingId) {
         await updateProduct.mutateAsync({
           id: editingId,
-          updates: { name: form.name, price: parseFloat(form.price), description: form.description, unit: form.unit, image_url: form.image_url || null },
+          updates: {
+            name: form.name,
+            price: parseFloat(form.price),
+            description: form.description,
+            unit: form.unit,
+            image_url: form.image_url || null,
+            category_id: form.category_id || null,
+            original_price: form.original_price ? parseFloat(form.original_price) : null,
+            featured: form.featured,
+          },
         });
-        toast.success("Produto atualizado!");
+        toast.success("Produto atualizado!", { id: toastId });
       } else {
         await createProduct.mutateAsync({
           name: form.name,
@@ -95,48 +115,80 @@ const Dashboard = () => {
           description: form.description,
           unit: form.unit,
           image_url: form.image_url || undefined,
+          category_id: form.category_id || undefined,
         });
-        toast.success("Produto criado!");
+        toast.success("Produto criado!", { id: toastId });
       }
       resetForm();
     } catch {
-      toast.error("Erro ao salvar produto");
+      toast.error("Erro ao salvar produto", { id: toastId });
     }
   };
 
   const handleDelete = async (id: string) => {
+    const toastId = toast.loading("Removendo produto...");
     try {
       await deleteProduct.mutateAsync(id);
-      toast.success("Produto removido!");
+      toast.success("Produto removido!", { id: toastId });
     } catch {
-      toast.error("Erro ao remover produto");
+      toast.error("Erro ao remover produto", { id: toastId });
     }
   };
 
   const handleEdit = (p: any) => {
-    setForm({ name: p.name, price: String(p.price), description: p.description || "", unit: p.unit || "un", image_url: p.image_url || "" });
+    setForm({
+      name: p.name,
+      price: String(p.price),
+      description: p.description || "",
+      unit: p.unit || "un",
+      image_url: p.image_url || "",
+      category_id: p.category_id || "",
+      original_price: p.original_price ? String(p.original_price) : "",
+      featured: p.featured || false,
+    });
     setEditingId(p.id);
     setShowAdd(true);
+  };
+
+  const handleTogglePromo = async (p: any) => {
+    const toastId = toast.loading(p.featured ? "Removendo destaque..." : "Adicionando destaque...");
+    try {
+      await updateProduct.mutateAsync({
+        id: p.id,
+        updates: { featured: !p.featured },
+      });
+      toast.success(p.featured ? "Produto removido dos destaques" : "Produto em destaque! ⭐", { id: toastId });
+    } catch {
+      toast.error("Erro ao alterar destaque", { id: toastId });
+    }
   };
 
   const handleToggleStatus = async () => {
     if (!store) return;
     const newStatus = store.status === "open" ? "closed" : "open";
+    const toastId = toast.loading(newStatus === "open" ? "Abrindo loja..." : "Fechando loja...");
     try {
       await storesService.update(store.id, { status: newStatus });
-      toast.success(newStatus === "open" ? "Loja aberta!" : "Loja fechada!");
-      window.location.reload();
+      toast.success(newStatus === "open" ? "Loja aberta!" : "Loja fechada!", { id: toastId });
+      queryClient.invalidateQueries({ queryKey: ["my-stores"] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
     } catch {
-      toast.error("Erro ao alterar status");
+      toast.error("Erro ao alterar status", { id: toastId });
     }
   };
 
   const handleOrderStatus = async (orderId: string, status: string) => {
+    const labels: Record<string, string> = {
+      confirmed: "Confirmando pedido...",
+      delivered: "Marcando como entregue...",
+      cancelled: "Cancelando pedido...",
+    };
+    const toastId = toast.loading(labels[status] || "Atualizando...");
     try {
       await updateOrderStatus.mutateAsync({ orderId, status });
-      toast.success("Status atualizado!");
+      toast.success("Status atualizado!", { id: toastId });
     } catch {
-      toast.error("Erro ao atualizar pedido");
+      toast.error("Erro ao atualizar pedido", { id: toastId });
     }
   };
 
@@ -155,6 +207,7 @@ const Dashboard = () => {
 
   const handleSaveSettings = async () => {
     if (!store) return;
+    const toastId = toast.loading("Salvando configurações...");
     try {
       await storesService.update(store.id, {
         name: storeForm.name, description: storeForm.description, address: storeForm.address,
@@ -163,11 +216,12 @@ const Dashboard = () => {
         min_order: parseFloat(storeForm.min_order) || 0, delivery_time_min: parseInt(storeForm.delivery_time_min) || 30,
         delivery_time_max: parseInt(storeForm.delivery_time_max) || 60,
       });
-      toast.success("Configurações salvas!");
+      toast.success("Configurações salvas!", { id: toastId });
       setShowSettings(false);
-      window.location.reload();
+      queryClient.invalidateQueries({ queryKey: ["my-stores"] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
     } catch {
-      toast.error("Erro ao salvar configurações");
+      toast.error("Erro ao salvar configurações", { id: toastId });
     }
   };
 
@@ -191,6 +245,10 @@ const Dashboard = () => {
       </main>
     );
   }
+
+  // Use isStoreOpen to reflect the real status based on hours
+  const reallyOpen = isStoreOpen(store);
+  const { label: statusLabel } = getStoreStatusLabel(store);
 
   const filteredProducts = (products || []).filter(
     (p) => !busca || p.name.toLowerCase().includes(busca.toLowerCase())
@@ -265,14 +323,27 @@ const Dashboard = () => {
             </div>
             <div className="flex-1">
               <p className="text-sm text-muted-foreground mb-1">Status</p>
-              <button
-                onClick={handleToggleStatus}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  store.status === "open" ? "bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]" : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {store.status === "open" ? "Aberto" : "Fechado"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleStatus}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    store.status === "open" ? "bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {store.status === "open" ? "Aberto" : "Fechado"}
+                </button>
+                {/* Show real-time status hint if has hours */}
+                {store.opens_at && store.closes_at && (
+                  <span className={`text-[10px] ${reallyOpen ? "text-[hsl(var(--success))]" : "text-muted-foreground"}`}>
+                    {reallyOpen ? "Dentro do horário" : "Fora do horário"}
+                  </span>
+                )}
+              </div>
+              {store.opens_at && store.closes_at && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Horário: {store.opens_at} - {store.closes_at}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -284,7 +355,7 @@ const Dashboard = () => {
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
           <TabsTrigger value="analytics" className="gap-1.5">
             <BarChart3 className="h-3.5 w-3.5" />
-            Analytics
+            Resumo
           </TabsTrigger>
         </TabsList>
 
@@ -325,14 +396,39 @@ const Dashboard = () => {
                   className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 <input type="text" placeholder="Unidade (ex: kg, un, 500ml)" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
                   className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                {/* Category selector */}
+                <select
+                  value={form.category_id}
+                  onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}
+                  className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="">Sem categoria</option>
+                  {(categories || []).map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+                  ))}
+                </select>
+                {/* Original price for promo */}
+                <input type="number" step="0.01" placeholder="Preço original (promoção)" value={form.original_price} onChange={(e) => setForm((f) => ({ ...f, original_price: e.target.value }))}
+                  className="rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <div className="mt-3 flex items-center gap-3">
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground cursor-pointer hover:bg-secondary transition-colors">
                   <ImageIcon className="h-4 w-4" />
                   {uploading ? "Enviando..." : form.image_url ? "Alterar imagem" : "Adicionar imagem"}
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
                 </label>
                 {form.image_url && <img src={form.image_url} alt="Preview" className="h-10 w-10 rounded-lg object-cover" />}
+                {/* Featured toggle */}
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.featured}
+                    onChange={(e) => setForm((f) => ({ ...f, featured: e.target.checked }))}
+                    className="rounded border-border"
+                  />
+                  <Star className="h-3.5 w-3.5 text-accent" />
+                  <span className="text-muted-foreground">Destaque</span>
+                </label>
               </div>
               <button
                 onClick={handleSave}
@@ -361,43 +457,66 @@ const Dashboard = () => {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredProducts.map((p) => (
-                <div key={p.id} className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-secondary/50">
-                  <div className="flex items-center gap-3">
-                    {p.image_url && <img src={p.image_url} alt={p.name} className="h-12 w-12 rounded-lg object-cover" />}
-                    <div>
-                      <p className="font-medium text-card-foreground">{p.name}</p>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-sm font-bold text-primary">R$ {Number(p.price).toFixed(2).replace(".", ",")}</span>
-                        {p.unit && <span className="text-xs text-muted-foreground">{p.unit}</span>}
-                        {!p.in_stock && <Badge variant="secondary" className="text-[10px]">Sem estoque</Badge>}
+              {filteredProducts.map((p) => {
+                const hasDiscount = p.original_price && Number(p.original_price) > Number(p.price);
+                return (
+                  <div key={p.id} className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-secondary/50">
+                    <div className="flex items-center gap-3">
+                      {p.image_url && <img src={p.image_url} alt={p.name} className="h-12 w-12 rounded-lg object-cover" />}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-card-foreground">{p.name}</p>
+                          {p.featured && <Star className="h-3 w-3 fill-accent text-accent" />}
+                          {hasDiscount && <Badge className="bg-destructive text-destructive-foreground border-0 text-[9px] px-1.5">PROMO</Badge>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-sm font-bold text-primary">R$ {Number(p.price).toFixed(2).replace(".", ",")}</span>
+                          {hasDiscount && (
+                            <span className="text-xs text-muted-foreground line-through">R$ {Number(p.original_price).toFixed(2).replace(".", ",")}</span>
+                          )}
+                          {p.unit && <span className="text-xs text-muted-foreground">{p.unit}</span>}
+                          {(p as any).categories?.name && (
+                            <Badge variant="outline" className="text-[9px] px-1.5 gap-0.5">
+                              <Tag className="h-2.5 w-2.5" />
+                              {(p as any).categories.name}
+                            </Badge>
+                          )}
+                          {!p.in_stock && <Badge variant="secondary" className="text-[10px]">Sem estoque</Badge>}
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleTogglePromo(p)}
+                        title={p.featured ? "Remover destaque" : "Destacar"}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"
+                      >
+                        {p.featured ? <StarOff className="h-4 w-4" /> : <Star className="h-4 w-4" />}
+                      </button>
+                      <button onClick={() => handleEdit(p)} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
+                            <AlertDialogDescription>Esta ação não pode ser desfeita. O produto "{p.name}" será removido permanentemente.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => handleEdit(p)} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
-                          <AlertDialogDescription>Esta ação não pode ser desfeita. O produto "{p.name}" será removido permanentemente.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -459,7 +578,7 @@ const Dashboard = () => {
           )}
         </TabsContent>
 
-        {/* Analytics Tab */}
+        {/* Analytics Tab - Simplified */}
         <TabsContent value="analytics">
           <AnalyticsDashboard storeId={store.id} storeName={store.name} />
         </TabsContent>
@@ -472,6 +591,16 @@ const Dashboard = () => {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-card-foreground">Configurações da Loja</h2>
               <button onClick={() => setShowSettings(false)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+            </div>
+
+            {/* Status explanation */}
+            <div className="mb-4 rounded-lg bg-muted/50 p-3">
+              <p className="text-xs font-medium text-foreground mb-1">Como funciona o status:</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
+                <li>• <strong>Status "Aberto"</strong> + horário configurado = aberto somente no horário</li>
+                <li>• <strong>Status "Aberto"</strong> sem horário = sempre aberto</li>
+                <li>• <strong>Status "Fechado"</strong> = sempre fechado independente do horário</li>
+              </ul>
             </div>
 
             {/* Cover image in settings */}

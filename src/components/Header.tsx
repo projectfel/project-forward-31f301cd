@@ -1,9 +1,9 @@
-import { MapPin, ShoppingCart, User, LogOut, LogIn, Package, LayoutDashboard, ShieldCheck, Mic } from "lucide-react";
-import { Link } from "react-router-dom";
+import { MapPin, ShoppingCart, User, LogOut, LogIn, Package, LayoutDashboard, ShieldCheck, Mic, UserPen } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +15,13 @@ import {
 const Header = () => {
   const { itemCount, setIsOpen } = useCart();
   const { user, role, signOut, loading } = useAuth();
-  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Você saiu da sua conta com sucesso!");
+    navigate("/", { replace: true });
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
@@ -37,7 +43,6 @@ const Header = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Voice shopping - only show if logged in */}
           {!loading && user && (
             <Link
               to="/compra-voz"
@@ -60,6 +65,12 @@ const Header = () => {
                     <p className="text-xs text-muted-foreground truncate max-w-[180px]">{user.email}</p>
                   </div>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/perfil" className="cursor-pointer">
+                      <UserPen className="h-4 w-4 mr-2" />
+                      Editar Perfil
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to="/compra-voz" className="cursor-pointer">
                       <Mic className="h-4 w-4 mr-2" />
@@ -90,10 +101,7 @@ const Header = () => {
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={async () => {
-                      await signOut();
-                      toast({ title: "Você saiu da sua conta." });
-                    }}
+                    onClick={handleSignOut}
                     className="text-destructive cursor-pointer"
                   >
                     <LogOut className="h-4 w-4 mr-2" />

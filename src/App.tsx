@@ -15,6 +15,7 @@ import Index from "./pages/Index";
 import MarketPage from "./pages/MarketPage";
 import Dashboard from "./pages/Dashboard";
 import MeusPedidos from "./pages/MeusPedidos";
+import Perfil from "./pages/Perfil";
 import TermosDeUso from "./pages/TermosDeUso";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
@@ -58,6 +59,7 @@ const App = () => (
                 <Route path="/compra-voz" element={<CompraVoz />} />
 
                 <Route path="/meus-pedidos" element={<ProtectedRoute><MeusPedidos /></ProtectedRoute>} />
+                <Route path="/perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute requiredRole="moderator"><Dashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><Admin /></ProtectedRoute>} />
 
