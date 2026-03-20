@@ -2,14 +2,21 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { adminService } from "@/services/admin";
+import { storesService } from "@/services/stores";
+import { isStoreOpen, getStoreStatusLabel } from "@/lib/storeStatus";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   ArrowLeft, Store, Users, ShoppingBag, Plus, X, Search,
   Shield, ShieldCheck, User as UserIcon, Eye, EyeOff, UserCheck,
+  Trash2, Pencil,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { z } from "zod";
 
 const createStoreSchema = z.object({
@@ -33,6 +40,12 @@ const Admin = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Edit store state
+  const [editingStore, setEditingStore] = useState<any | null>(null);
+  const [editStoreForm, setEditStoreForm] = useState({
+    name: "", whatsapp: "", address: "", neighborhood: "", description: "",
+  });
+
   const [form, setForm] = useState({
     email: "", password: "", displayName: "", storeName: "", whatsapp: "", address: "", neighborhood: "Lagoa Azul",
   });
@@ -50,21 +63,18 @@ const Admin = () => {
         setStores(storesResult.value || []);
       } else {
         setStores([]);
-        console.error("Erro ao carregar mercados:", storesResult.reason);
       }
 
       if (usersResult.status === "fulfilled") {
         setUsers(usersResult.value || []);
       } else {
         setUsers([]);
-        console.error("Erro ao carregar usuários:", usersResult.reason);
       }
 
       if (ordersResult.status === "fulfilled") {
         setOrders(ordersResult.value || []);
       } else {
         setOrders([]);
-        console.error("Erro ao carregar pedidos:", ordersResult.reason);
       }
     } finally {
       setLoading(false);
@@ -105,58 +115,101 @@ const Admin = () => {
   };
 
   const handleToggleStore = async (storeId: string, currentStatus: string) => {
-    // Não permite abrir/fechar quando está desativado (maintenance)
     if (currentStatus === "maintenance") return;
-
     const newStatus = currentStatus === "open" ? "closed" : "open";
+    const toastId = toast.loading(newStatus === "open" ? "Abrindo mercado..." : "Fechando mercado...");
     try {
       await adminService.updateStoreStatus(storeId, newStatus as any);
-      toast.success(newStatus === "open" ? "Mercado aberto!" : "Mercado fechado!");
+      toast.success(newStatus === "open" ? "Mercado aberto!" : "Mercado fechado!", { id: toastId });
       setStores((prev) => prev.map((s) => (s.id === storeId ? { ...s, status: newStatus } : s)));
       queryClient.invalidateQueries({ queryKey: ["stores"] });
     } catch {
-      toast.error("Erro ao alterar status");
+      toast.error("Erro ao alterar status", { id: toastId });
     }
   };
 
   const handleDeactivateStore = async (storeId: string, currentStatus: string) => {
     const newStatus = currentStatus === "maintenance" ? "closed" : "maintenance";
+    const toastId = toast.loading(newStatus === "maintenance" ? "Desativando mercado..." : "Reativando mercado...");
     try {
       await adminService.updateStoreStatus(storeId, newStatus as any);
-      toast.success(newStatus === "maintenance" ? "Mercado desativado!" : "Mercado reativado!");
+      toast.success(newStatus === "maintenance" ? "Mercado desativado!" : "Mercado reativado!", { id: toastId });
       setStores((prev) => prev.map((s) => (s.id === storeId ? { ...s, status: newStatus } : s)));
       queryClient.invalidateQueries({ queryKey: ["stores"] });
     } catch {
-      toast.error("Erro ao alterar status");
+      toast.error("Erro ao alterar status", { id: toastId });
+    }
+  };
+
+  const handleEditStore = (store: any) => {
+    setEditingStore(store);
+    setEditStoreForm({
+      name: store.name || "",
+      whatsapp: store.whatsapp || "",
+      address: store.address || "",
+      neighborhood: store.neighborhood || "",
+      description: store.description || "",
+    });
+  };
+
+  const handleSaveEditStore = async () => {
+    if (!editingStore) return;
+    const toastId = toast.loading("Salvando alterações...");
+    try {
+      await storesService.update(editingStore.id, editStoreForm);
+      toast.success("Mercado atualizado!", { id: toastId });
+      setStores((prev) => prev.map((s) => s.id === editingStore.id ? { ...s, ...editStoreForm } : s));
+      setEditingStore(null);
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+    } catch {
+      toast.error("Erro ao salvar", { id: toastId });
+    }
+  };
+
+  const handleDeleteStore = async (storeId: string) => {
+    const toastId = toast.loading("Excluindo mercado...");
+    try {
+      await adminService.deleteStore(storeId);
+      toast.success("Mercado excluído!", { id: toastId });
+      setStores((prev) => prev.filter((s) => s.id !== storeId));
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+    } catch {
+      toast.error("Erro ao excluir mercado. Verifique se não há pedidos vinculados.", { id: toastId });
     }
   };
 
   const handleRoleChange = async (userId: string, newRole: "admin" | "moderator" | "user") => {
+    const toastId = toast.loading("Alterando permissão...");
     try {
       await adminService.updateUserRole(userId, newRole);
-      toast.success("Permissão atualizada!");
+      toast.success("Permissão atualizada!", { id: toastId });
       setUsers((prev) =>
         prev.map((u) =>
           u.user_id === userId ? { ...u, user_roles: [{ role: newRole }] } : u
         )
       );
     } catch {
-      toast.error("Erro ao alterar permissão");
+      toast.error("Erro ao alterar permissão", { id: toastId });
     }
   };
 
   const filteredStores = stores.filter((s) => {
     const matchesSearch = !searchStores || s.name.toLowerCase().includes(searchStores.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all"
-        ? true
-        : s.status === statusFilter;
+    const matchesStatus = statusFilter === "all" ? true : s.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const filteredUsers = users.filter(
     (u) => !searchUsers || (u.display_name || "").toLowerCase().includes(searchUsers.toLowerCase())
   );
+
+  // Client count: ALL profiles count as registered users
+  const totalRegisteredUsers = users.length;
+  const totalClients = users.filter((u) => {
+    const role = u.user_roles?.[0]?.role;
+    return !role || role === "user";
+  }).length;
+  const totalLojistas = users.filter((u) => u.user_roles?.[0]?.role === "moderator").length;
 
   const roleIcon = (role: string) => {
     if (role === "admin") return <ShieldCheck className="h-3.5 w-3.5" />;
@@ -230,12 +283,11 @@ const Admin = () => {
               <Users className="h-5 w-5 text-accent" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-card-foreground">{users.length}</p>
+              <p className="text-2xl font-bold text-card-foreground">{totalRegisteredUsers}</p>
               <p className="text-sm text-muted-foreground">
-                Usuários{" "}
+                Cadastrados
                 <span className="text-xs text-muted-foreground/80 block">
-                  {users.filter((u) => u.user_roles?.[0]?.role === "user").length} clientes •{" "}
-                  {users.filter((u) => u.user_roles?.[0]?.role === "moderator").length} lojistas
+                  Todos os usuários registrados
                 </span>
               </p>
             </div>
@@ -247,14 +299,13 @@ const Admin = () => {
               <UserCheck className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-card-foreground">
-                {users.filter((u) => {
-                  const role = u.user_roles?.[0]?.role;
-                  // Considera como cliente quem não é admin/moderator
-                  return !role || role === "user";
-                }).length}
+              <p className="text-2xl font-bold text-card-foreground">{totalClients}</p>
+              <p className="text-sm text-muted-foreground">
+                Clientes
+                <span className="text-xs text-muted-foreground/80 block">
+                  {totalLojistas} lojistas
+                </span>
               </p>
-              <p className="text-sm text-muted-foreground">Clientes</p>
             </div>
           </div>
         </div>
@@ -321,47 +372,81 @@ const Admin = () => {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredStores.map((s) => (
-                <div key={s.id} className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-secondary/50">
-                  <div className="flex items-center gap-3">
-                    {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-10 w-10 rounded-lg object-cover" />}
-                    <div>
-                      <p className="font-medium text-card-foreground">{s.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.neighborhood || "Sem bairro"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        WhatsApp: <span className="font-medium">{s.whatsapp}</span>
-                      </p>
+              {filteredStores.map((s) => {
+                const storeOpenStatus = getStoreStatusLabel(s);
+                return (
+                  <div key={s.id} className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-secondary/50">
+                    <div className="flex items-center gap-3">
+                      {s.logo_url && <img src={s.logo_url} alt={s.name} className="h-10 w-10 rounded-lg object-cover" />}
+                      <div>
+                        <p className="font-medium text-card-foreground">{s.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.neighborhood || "Sem bairro"}
+                          {s.opens_at && s.closes_at && (
+                            <span className="ml-2">• {s.opens_at} - {s.closes_at}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          WhatsApp: <span className="font-medium">{s.whatsapp}</span>
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      className={`border-0 text-[10px] ${
-                        s.status === "open"
-                          ? "bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {s.status === "open" ? "Aberto" : s.status === "maintenance" ? "Desativado" : "Fechado"}
-                    </Badge>
-                    {s.status !== "maintenance" && (
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        className={`border-0 text-[10px] ${
+                          storeOpenStatus.isOpen
+                            ? "bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {storeOpenStatus.label}
+                      </Badge>
+                      {s.status !== "maintenance" && (
+                        <button
+                          onClick={() => handleToggleStore(s.id, s.status)}
+                          className="rounded-lg border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                        >
+                          {s.status === "open" ? "Fechar" : "Abrir"}
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleToggleStore(s.id, s.status)}
+                        onClick={() => handleEditStore(s)}
+                        className="rounded-lg border px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                        title="Editar"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeactivateStore(s.id, s.status)}
                         className="rounded-lg border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                       >
-                        {s.status === "open" ? "Fechar" : "Abrir"}
+                        {s.status === "maintenance" ? "Reativar" : "Desativar"}
                       </button>
-                    )}
-                    <button
-                      onClick={() => handleDeactivateStore(s.id, s.status)}
-                      className="rounded-lg border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                    >
-                      {s.status === "maintenance" ? "Reativar" : "Desativar"}
-                    </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="rounded-lg border px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors" title="Excluir">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir mercado?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta ação não pode ser desfeita. O mercado "{s.name}" e todos os seus produtos serão removidos.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteStore(s.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                              Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -458,6 +543,55 @@ const Admin = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Edit Store Modal */}
+      {editingStore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-card border p-6 animate-scale-in">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-card-foreground">Editar Mercado</h2>
+              <button onClick={() => setEditingStore(null)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Nome</label>
+                <input type="text" value={editStoreForm.name} onChange={(e) => setEditStoreForm((f) => ({ ...f, name: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Descrição</label>
+                <textarea value={editStoreForm.description} onChange={(e) => setEditStoreForm((f) => ({ ...f, description: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" rows={2} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">WhatsApp</label>
+                  <input type="text" value={editStoreForm.whatsapp} onChange={(e) => setEditStoreForm((f) => ({ ...f, whatsapp: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Bairro</label>
+                  <input type="text" value={editStoreForm.neighborhood} onChange={(e) => setEditStoreForm((f) => ({ ...f, neighborhood: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Endereço</label>
+                <input type="text" value={editStoreForm.address} onChange={(e) => setEditStoreForm((f) => ({ ...f, address: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setEditingStore(null)} className="flex-1 rounded-lg border py-2.5 text-sm text-muted-foreground hover:bg-secondary transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleSaveEditStore} className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity">
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Store Modal */}
       {showCreate && (
