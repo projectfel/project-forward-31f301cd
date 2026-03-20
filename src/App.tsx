@@ -15,6 +15,7 @@ import Index from "./pages/Index";
 import MarketPage from "./pages/MarketPage";
 import Dashboard from "./pages/Dashboard";
 import MeusPedidos from "./pages/MeusPedidos";
+import Perfil from "./pages/Perfil";
 import TermosDeUso from "./pages/TermosDeUso";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
